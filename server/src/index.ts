@@ -1,12 +1,25 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { ENV } from './config/env.js';
 import { initDatabase } from './db/schema.js';
 import { db } from './db/index.js';
 import apiRouter from './routes/index.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { securityHeadersMiddleware, apiGeneralLimiter } from './middlewares/security.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Locate frontend production build directory (root project dist)
+const candidateDistDirs = [
+  path.resolve(__dirname, '../../dist'),
+  path.resolve(process.cwd(), '../dist'),
+  path.resolve(process.cwd(), 'dist'),
+];
+const clientDistPath = candidateDistDirs.find((dir) => fs.existsSync(path.join(dir, 'index.html'))) || candidateDistDirs[0];
 
 const app = express();
 
@@ -39,12 +52,39 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Serve uploaded static files
 app.use('/uploads', express.static(path.resolve(ENV.UPLOAD_DIR)));
+app.use('/uploads', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: {
+      message: `File '${req.path}' not found in uploads.`,
+      statusCode: 404,
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
 
 // Global API rate limiter
 app.use('/api', apiGeneralLimiter);
 
 // Mount API routes
 app.use('/api', apiRouter);
+
+// Serve frontend production build assets from root project dist directory
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+}
+
+// SPA Fallback: Serve dist/index.html for frontend routes without intercepting /api or /uploads
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
+    return next();
+  }
+  const indexPath = path.join(clientDistPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  next();
+});
 
 // Centralized error handling middleware
 app.use(errorHandler);

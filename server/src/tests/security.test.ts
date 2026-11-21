@@ -541,4 +541,25 @@ describe('Phase 6: Security & Production Readiness', () => {
       assert.ok(errorPassed.message.includes('Invalid email or password'));
     });
   });
+
+  describe('9. Single-Service Render Deployment & SPA Fallback', () => {
+    it('should have a valid frontend production build in root dist directory', () => {
+      const distIndex = path.resolve('../dist/index.html');
+      assert.ok(fs.existsSync(distIndex), 'root dist/index.html must exist for single-service deployment');
+      const content = fs.readFileSync(distIndex, 'utf8');
+      assert.ok(content.includes('<html') || content.includes('<!DOCTYPE html>'), 'dist/index.html must contain HTML markup');
+      assert.ok(content.includes('/assets/'), 'dist/index.html must reference built assets');
+    });
+
+    it('should not intercept /api routes in SPA fallback handler', () => {
+      const isApi = (urlPath: string) => urlPath.startsWith('/api') || urlPath.startsWith('/uploads');
+      assert.strictEqual(isApi('/api/complaints'), true, '/api/complaints must not be intercepted');
+      assert.strictEqual(isApi('/api/health'), true, '/api/health must not be intercepted');
+      assert.strictEqual(isApi('/uploads/evidence.jpg'), true, '/uploads/ must not be intercepted');
+      assert.strictEqual(isApi('/track'), false, '/track is an SPA route');
+      assert.strictEqual(isApi('/report'), false, '/report is an SPA route');
+      assert.strictEqual(isApi('/admin'), false, '/admin is an SPA route');
+      assert.strictEqual(isApi('/'), false, '/ is an SPA route');
+    });
+  });
 });
